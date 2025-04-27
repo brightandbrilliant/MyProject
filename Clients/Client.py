@@ -17,7 +17,7 @@ class Client(nn.Module):
                  graph_style_dim,        # 图嵌入最终输出维度（风格维度）
                  fusion_output_dim,      # 融合后输出维度
                  node_num_layers,             # GNN 层数
-                 graph_num_layers,          #GNN 层数
+                 graph_num_layers,          # GNN 层数
                  dropout,                # Dropout 比例
                  n_clients,              # 除了本地端以外的客户数量
                  n_users,                # 用户总数（即所有 user id 的最大值 + 1，用于分类预测）
@@ -59,7 +59,7 @@ class Client(nn.Module):
         self.predictor = nn.Linear(fusion_output_dim, n_users)
 
         # 交叉熵损失函数（用于多分类）
-        self.loss_fn = nn.CrossEntropyLoss()
+        self.loss_fn = nn.CrossEntropyLoss(ignore_index=-1)
 
     def forward(self, data, user_ids, target_labels, alpha, external_node_embeds_dict=None):
         """
@@ -112,6 +112,7 @@ class Client(nn.Module):
         loss = self.loss_fn(logits, target_labels)
 
         return loss, logits
+
 
 """
 def test_client_forward():

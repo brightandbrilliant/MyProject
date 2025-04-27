@@ -2,37 +2,13 @@ import argparse
 import torch
 from torch_geometric.loader import DataLoader
 
+from Parse.BlogCatalog_build import preprocess_social_graph
+from Parse.BlogCatalog_parse import read_data
 from Train.Train import Trainer
 from Clients.Client import Client
-from torch.utils.data import Dataset
 from torch_geometric.data import Data
-
 import random
-
-
-# ===== 自定义假数据集 =====
-class MyFakeDataset(Dataset):
-    def __init__(self, num_graphs=5, feature_dim=16, num_users=10):
-        self.num_graphs = num_graphs
-        self.feature_dim = feature_dim
-        self.num_users = num_users
-
-    def __len__(self):
-        return self.num_graphs
-
-    def __getitem__(self, idx):
-        num_nodes = random.randint(2, 5)
-        x = torch.randn((num_nodes, self.feature_dim))
-        edge_index = torch.randint(0, num_nodes, (2, num_nodes * 2))
-        batch = torch.zeros(num_nodes, dtype=torch.long)
-
-        user_ids = torch.randint(0, self.num_users, (num_nodes,))
-        target_labels = torch.randint(0, self.num_users, (num_nodes,))
-
-        data = Data(x=x, edge_index=edge_index, batch=batch)
-        data.user_ids = user_ids
-        data.target_labels = target_labels
-        return data
+import os
 
 
 # ===== 构建 Clients =====
@@ -62,7 +38,7 @@ def main():
     parser = argparse.ArgumentParser(description="Federated Graph Learning Trainer")
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
     parser.add_argument('--n_clients', type=int, default=3)
-    parser.add_argument('--feature_dim', type=int, default=16)
+    parser.add_argument('--feature_dim', type=int, default=39)
     parser.add_argument('--num_users', type=int, default=10)
     parser.add_argument('--batch_size', type=int, default=1)
     parser.add_argument('--num_graphs', type=int, default=5)
@@ -81,12 +57,21 @@ def main():
 
     train_loaders = {}
     for cid in range(args.n_clients):
-        dataset = MyFakeDataset(
-            num_graphs=args.num_graphs,
-            feature_dim=args.feature_dim,
-            num_users=args.num_users
-        )
+        # ✅ 正确加载 BlogCatalog 数据
+        BlogCatalog_edge_path = './Dataset/BlogCatalog/BlogCatalog-dataset/data/edges.csv'
+        BlogCatalog_group_path = './Dataset/BlogCatalog/BlogCatalog-dataset/data/group-edges.csv'
+
+        raw_users = read_data(BlogCatalog_edge_path, BlogCatalog_group_path)  # 得到字典 {user_id: info}
+        # ✅ 不需要再转成 list！直接传进去
+        data = preprocess_social_graph(raw_users)
+
+        # ✅ 小trick：加 batch 标签（虽然在 preprocess 已经加了，但这里保险一点）
+        data.batch = torch.zeros(data.num_nodes, dtype=torch.long)
+
+        # ✅ DataLoader要求list形式
+        dataset = [data]
         loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
+
         train_loaders[cid] = loader
 
     trainer = Trainer(
@@ -94,11 +79,13 @@ def main():
         train_loaders=train_loaders,
         device=args.device,
         local_steps=args.local_steps,
-        total_rounds=args.total_rounds,
-        alpha=args.alpha
+        total_rounds=args.total_rounds,  # ✅ 之前写死100，这里改成用args
+        alpha=args.alpha,
+        save_every=5,
+        checkpoint_dir='checkpoints'
     )
 
-    trainer.train()
+    trainer.train(resume_round=0, load_checkpoint=False)
 
 
 if __name__ == "__main__":

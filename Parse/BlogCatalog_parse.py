@@ -31,13 +31,19 @@ def read_data(edge_path, group_edge_path):
     user_dict = dict(user_dict)
     return user_dict
 
-
+"""
 BlogCatalog_edge_path = '../Dataset/BlogCatalog/BlogCatalog-dataset/data/edges.csv'
 BlogCatalog_group_path = '../Dataset/BlogCatalog/BlogCatalog-dataset/data/group-edges.csv'
 dict_ = read_data(BlogCatalog_edge_path, BlogCatalog_group_path)
 for i, user_id in enumerate(dict_.keys()):
+    if(dict_[user_id]['groups'] == []):
+        print(False)
+        break
+"""
+"""
     print(f"User ID: {user_id}")
     print(dict_[user_id])
     if i >= 4:  # 打印前5个用户信息
         break
+"""
 

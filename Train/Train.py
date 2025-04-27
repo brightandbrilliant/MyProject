@@ -1,4 +1,5 @@
 import torch
+import os
 from torch_geometric.loader import DataLoader
 from Clients.Client import Client
 from Communication.P2P import P2PCommunicator
@@ -14,7 +15,7 @@ def to_device(data_dict, device):
 
 
 class Trainer:
-    def __init__(self, clients: Dict[int, Client], train_loaders: Dict[int, DataLoader], device, local_steps=1, total_rounds=10, alpha=0.5):
+    def __init__(self, clients: Dict[int, Client], train_loaders: Dict[int, DataLoader], device, local_steps=1, total_rounds=10, alpha=0.5, save_every=1, checkpoint_dir='checkpoints', clean_old=True):
         """
         :param clients: 所有 client 的实例，格式 {client_id: client_instance}
         :param train_loaders: 每个 client 对应的 DataLoader
@@ -22,6 +23,9 @@ class Trainer:
         :param local_steps: 本地训练的轮数
         :param total_rounds: 联邦训练总轮数
         :param alpha: 融合外部嵌入时的个性化加权系数
+        :param save_every: 每训练多少轮保存一次模型
+        :param checkpoint_dir: 保存模型的文件夹
+        :param clean_old: 是否在保存新 checkpoint 前清理旧的
         """
         self.clients = clients
         self.train_loaders = train_loaders
@@ -29,43 +33,48 @@ class Trainer:
         self.local_steps = local_steps
         self.total_rounds = total_rounds
         self.alpha = alpha
+        self.save_every = save_every
+        self.checkpoint_dir = checkpoint_dir
+        self.clean_old = clean_old
 
-        # 每个 client 的通信器
+        os.makedirs(self.checkpoint_dir, exist_ok=True)
+
         self.communicators = {
             cid: P2PCommunicator(client_id=cid, total_clients=list(clients.keys()))
             for cid in clients
         }
 
-        # 模拟网络缓冲区，每轮广播之后清空
         self.network = {cid: [] for cid in clients}
 
-    def train(self):
-        for round in range(self.total_rounds):
+    def train(self, resume_round=0, load_checkpoint=False):
+        """
+        :param resume_round: 从哪一轮开始训练
+        :param load_checkpoint: 是否加载已有 checkpoint 继续训练
+        """
+        if load_checkpoint and resume_round > 0:
+            self.load_checkpoint(resume_round)
+            print(f"[Trainer] Loaded checkpoint from round {resume_round}.")
+
+        for round in range(resume_round, self.total_rounds):
             print(f"\n=== Federated Round {round + 1} ===")
 
-            # 每个 client 本地训练 local_steps 次
             for cid, client in self.clients.items():
                 communicator = self.communicators[cid]
                 dataloader = self.train_loaders[cid]
 
                 for local_step in range(self.local_steps):
-                    # times = 1
-                    # times用来显示信息
                     for batch in dataloader:
                         batch = batch.to(self.device)
-
                         user_ids = batch.user_ids.to(self.device)
                         target_labels = batch.target_labels.to(self.device)
 
-                        # 整合外部嵌入（来自其他 clients）
                         external_dict = communicator.organize_external_node_embeds(
                             received_packets=self.network[cid],
                             user_ids=user_ids,
                             embed_dim=client.node_encoder.embed_dim,
                             device=self.device
                         )
-                        # print(external_dict)
-                        # 前向传播 + 反向传播
+
                         loss, _ = client.forward(
                             data=batch,
                             user_ids=user_ids,
@@ -74,8 +83,6 @@ class Trainer:
                             external_node_embeds_dict=external_dict
                         )
 
-                        # print(f"The loss of the {times}th training of client {cid}: {loss}")
-                        # times += 1
                         loss.backward()
                         client.optimizer.step()
                         client.optimizer.zero_grad()
@@ -85,13 +92,45 @@ class Trainer:
                     for batch in dataloader:
                         batch = batch.to(self.device)
                         user_ids = batch.user_ids.to(self.device)
-
                         local_user_embeds = client.node_encoder(batch)
                         package = communicator.pack_user_embeddings(user_ids, local_user_embeds)
                         communicator.send_to_all_peers(package, self.network)
 
-            # 清空模拟网络缓冲区，为下一轮广播做准备
+            # 清空模拟网络缓冲区
             self.network = {cid: [] for cid in self.clients}
+
+            # 保存 checkpoint
+            if (round + 1) % self.save_every == 0:
+                self.save_checkpoint(round + 1)
+
+    def save_checkpoint(self, round):
+        """保存所有 clients 的模型参数"""
+        if self.clean_old:
+            self._clear_checkpoints()
+
+        for cid, client in self.clients.items():
+            save_path = os.path.join(self.checkpoint_dir, f'client_{cid}_round_{round}.pth')
+            torch.save(client.state_dict(), save_path)
+        print(f"[Checkpoint] Saved models at round {round}.")
+
+    def load_checkpoint(self, round):
+        """加载所有 clients 的模型参数"""
+        for cid, client in self.clients.items():
+            load_path = os.path.join(self.checkpoint_dir, f'client_{cid}_round_{round}.pth')
+            if os.path.exists(load_path):
+                state_dict = torch.load(load_path, map_location=self.device)
+                client.load_state_dict(state_dict)
+                print(f"[Checkpoint] Loaded client {cid} model from round {round}.")
+            else:
+                print(f"[Checkpoint] Warning: No checkpoint found for client {cid} at round {round}.")
+
+    def _clear_checkpoints(self):
+        """清理 checkpoint 目录下所有旧的 .pth 文件"""
+        for filename in os.listdir(self.checkpoint_dir):
+            if filename.endswith('.pth'):
+                filepath = os.path.join(self.checkpoint_dir, filename)
+                os.remove(filepath)
+        print(f"[Checkpoint] Cleared old checkpoints.")
 
 
 """
