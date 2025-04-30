@@ -2,11 +2,10 @@ import argparse
 import torch
 from torch_geometric.loader import DataLoader
 
-from Parse.BlogCatalog_build import preprocess_social_graph
-from Parse.BlogCatalog_parse import read_data
+from Parse.BlogCatalog_parse.BlogCatalog_build import preprocess_social_graph
+from Parse.BlogCatalog_parse.BlogCatalog_parse import read_data
 from Train.Train import Trainer
 from Clients.Client import Client
-import os
 
 
 # ===== 构建 Clients =====

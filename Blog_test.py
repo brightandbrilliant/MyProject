@@ -1,12 +1,9 @@
 import torch
-import torch.nn.functional as F
-from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 from Clients.Client import Client
 from sklearn.metrics import precision_score, recall_score
-import os
 from Parse.BlogCatalog_parse import read_data
-from Parse.BlogCatalog_build import preprocess_social_graph
+from Parse.BlogCatalog_parse.BlogCatalog_build import preprocess_social_graph
 
 
 # ==== 1. 加载模型函数 ====
