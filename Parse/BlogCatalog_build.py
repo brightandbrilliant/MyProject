@@ -32,6 +32,8 @@ def preprocess_social_graph(raw_users):
     user_ids = []
     target_labels = []
 
+    n_users = len(valid_users)
+
     for user_id, user_info in valid_users:
         group_feats = torch.zeros(len(all_group_ids))
         for gid in user_info.get('groups', []):
@@ -40,8 +42,12 @@ def preprocess_social_graph(raw_users):
         x_list.append(group_feats)
         user_ids.append(user_id2idx[user_id])
 
-        # 注意：因为你的parse没有 target_label，这里用 -1 占位
-        target_labels.append(-1)
+        # ✨ 多标签 target，0-1向量
+        target_label = torch.zeros(n_users)
+        for followee in user_info.get('following', []):
+            if followee in user_id2idx:
+                target_label[user_id2idx[followee]] = 1.0
+        target_labels.append(target_label)
 
         for followee in user_info.get('following', []):
             if followee in user_id2idx:
@@ -59,12 +65,13 @@ def preprocess_social_graph(raw_users):
         edge_index = torch.empty((2, 0), dtype=torch.long)
 
     user_ids = torch.tensor(user_ids, dtype=torch.long)
-    target_labels = torch.tensor(target_labels, dtype=torch.long)
+    target_labels = torch.stack(target_labels)  # [n_users, n_users] 大小的0/1矩阵
     batch = torch.zeros(x.size(0), dtype=torch.long)
 
     data = Data(x=x, edge_index=edge_index, batch=batch)
     data.user_ids = user_ids
     data.target_labels = target_labels
-    print(f"预处理完成：节点数 {x.size(0)}, 边数 {edge_index.size(1)}")
+
+    print(f"预处理完成：节点数 {x.size(0)}, 边数 {edge_index.size(1)}，label shape {target_labels.shape}")
     return data
 

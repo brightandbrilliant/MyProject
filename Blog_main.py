@@ -6,13 +6,11 @@ from Parse.BlogCatalog_build import preprocess_social_graph
 from Parse.BlogCatalog_parse import read_data
 from Train.Train import Trainer
 from Clients.Client import Client
-from torch_geometric.data import Data
-import random
 import os
 
 
 # ===== 构建 Clients =====
-def build_clients(n_clients=3, feature_dim=16, num_users=10):
+def build_clients(n_clients=2, feature_dim=16, num_users=10, device='cpu'):
     clients = {}
     for cid in range(n_clients):
         client = Client(
@@ -27,8 +25,8 @@ def build_clients(n_clients=3, feature_dim=16, num_users=10):
             dropout=0.1,
             n_clients=n_clients - 1,
             n_users=num_users
-        )
-        client.optimizer = torch.optim.Adam(client.parameters(), lr=0.01)
+        ).to(device)  # 🔥 补充：client直接.to(device)，否则放到CPU再训练会报警告
+        client.create_optimizer(lr=1e-3, weight_decay=1e-5)
         clients[cid] = client
     return clients
 
@@ -49,40 +47,39 @@ def main():
 
     print(f"Using device: {args.device}")
 
+    # 构建客户端
     clients = build_clients(
         n_clients=args.n_clients,
         feature_dim=args.feature_dim,
-        num_users=args.num_users
+        num_users=args.num_users,
+        device=args.device  # 🔥传device
     )
 
+    # 准备各Client的数据
     train_loaders = {}
     for cid in range(args.n_clients):
-        # ✅ 正确加载 BlogCatalog 数据
         BlogCatalog_edge_path = './Dataset/BlogCatalog/BlogCatalog-dataset/data/edges.csv'
         BlogCatalog_group_path = './Dataset/BlogCatalog/BlogCatalog-dataset/data/group-edges.csv'
 
-        raw_users = read_data(BlogCatalog_edge_path, BlogCatalog_group_path)  # 得到字典 {user_id: info}
-        # ✅ 不需要再转成 list！直接传进去
+        raw_users = read_data(BlogCatalog_edge_path, BlogCatalog_group_path)
         data = preprocess_social_graph(raw_users)
 
-        # ✅ 小trick：加 batch 标签（虽然在 preprocess 已经加了，但这里保险一点）
-        data.batch = torch.zeros(data.num_nodes, dtype=torch.long)
-
-        # ✅ DataLoader要求list形式
+        data.batch = torch.zeros(data.num_nodes, dtype=torch.long)  # 🔥确认有batch字段
         dataset = [data]
         loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
 
         train_loaders[cid] = loader
 
+    # 创建 Trainer
     trainer = Trainer(
         clients=clients,
         train_loaders=train_loaders,
         device=args.device,
         local_steps=args.local_steps,
-        total_rounds=args.total_rounds,  # ✅ 之前写死100，这里改成用args
+        total_rounds=args.total_rounds,
         alpha=args.alpha,
         save_every=5,
-        checkpoint_dir='checkpoints'
+        checkpoint_dir='Checkpoints'
     )
 
     trainer.train(resume_round=0, load_checkpoint=False)

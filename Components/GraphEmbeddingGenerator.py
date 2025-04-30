@@ -55,60 +55,6 @@ class GraphEmbeddingGenerator(nn.Module):
         return graph_embed
 
 
-"""
-def test_graph_embedding_generator():
-    node_feat_dim = 8
-    hidden_dim = 16
-    style_dim = 10
-    num_layers = 3
-    num_nodes = 20
-    dropout = 0.2
-
-    model = GraphEmbeddingGenerator(node_feat_dim, hidden_dim, style_dim, num_layers, dropout)
-    model.train()  # 训练模式
-
-    # 构造 synthetic 图数据
-    # 20 个节点，每个节点有 8 维特征
-    x = torch.randn(num_nodes, node_feat_dim)
-
-    # 构造一些简单边
-    # 比如构成一个环状图
-    edge_index = torch.tensor([[i for i in range(num_nodes)],
-                               [(i + 1) % num_nodes for i in range(num_nodes)]], dtype=torch.long)
-
-    # 构造 torch_geometric 的 Data 对象
-    data = Data(x=x, edge_index=edge_index)
-
-    # ----------- 测试 1: 前向传播 -----------
-    graph_embed = model(data)
-    assert graph_embed.shape == (1, style_dim), f"图嵌入 shape 应该是 [1, {style_dim}]，但得到了 {graph_embed.shape}"
-    print("前向传播通过，输出形状正确！")
-
-    # ----------- 测试 2: 反向传播 -----------
-    loss = graph_embed.sum()
-    loss.backward()
-
-    for name, param in model.named_parameters():
-        assert param.grad is not None, f"参数 {name} 没有梯度，反向传播失败"
-    print("反向传播通过，梯度存在！")
-
-    # ----------- 测试 3: 多种大小图 -----------
-    for test_nodes in [5, 10, 50]:
-        x = torch.randn(test_nodes, node_feat_dim)
-        edge_index = torch.tensor([[i for i in range(test_nodes)],
-                                   [(i + 1) % test_nodes for i in range(test_nodes)]], dtype=torch.long)
-        data = Data(x=x, edge_index=edge_index)
-        out = model(data)
-        print(out)
-        assert out.shape == (1, style_dim), f"大小为 {test_nodes} 的图输出 shape 异常: {out.shape}"
-    print("多图规模测试通过！")
-
-    print("所有测试全部通过！")
-
-
-# 运行测试
-test_graph_embedding_generator()
-"""
 
 
 

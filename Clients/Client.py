@@ -59,9 +59,13 @@ class Client(nn.Module):
         self.predictor = nn.Linear(fusion_output_dim, n_users)
 
         # 交叉熵损失函数（用于多分类）
-        self.loss_fn = nn.CrossEntropyLoss(ignore_index=-1)
+        self.loss_fn = nn.BCEWithLogitsLoss()
+        self.optimizer = None
 
-    def forward(self, data, user_ids, target_labels, alpha, external_node_embeds_dict=None):
+    def create_optimizer(self, lr=1e-3, weight_decay=1e-5):
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=lr, weight_decay=weight_decay)
+
+    def forward(self, data, user_ids, target_labels, alpha, external_node_embeds_dict=None, debug=True):
         """
         前向传播函数
 
@@ -71,7 +75,7 @@ class Client(nn.Module):
             target_labels: Tensor[int]，目标标签（节点真实关注的用户 ID），shape: [batch_size]
             external_node_embeds_dict: Dict[int, List[Tensor]]，每个用户 ID 在其他客户端中的嵌入
             alpha: 个性化聚合加权系数
-
+            debug: 是否正在debug
         Returns:
             loss: CrossEntropy 损失
             logits: [batch_size, n_users]，用于后续评估等
@@ -79,6 +83,8 @@ class Client(nn.Module):
 
         # Step 1: 本地节点嵌入生成
         local_node_embeds = self.node_encoder(data)
+        if debug and (torch.isnan(local_node_embeds).any() or torch.isinf(local_node_embeds).any()):
+            print("[Client Debug] local_node_embeds has nan or inf!")
 
         # Step 2: 聚合外部嵌入（若有）
         if external_node_embeds_dict is not None:
@@ -99,14 +105,23 @@ class Client(nn.Module):
         else:
             personalized_node_embed = local_node_embeds
 
+        if debug and (torch.isnan(personalized_node_embed).any() or torch.isinf(personalized_node_embed).any()):
+            print("[Client Debug] personalized_node_embed has nan or inf!")
+
         # Step 3: 图嵌入生成
         graph_embed = self.graph_encoder(data)  # [num_graphs, graph_style_dim]
+        if debug and (torch.isnan(graph_embed).any() or torch.isinf(graph_embed).any()):
+            print("[Client Debug] graph_embed has nan or inf!")
 
         # Step 4: 融合节点与图嵌入
         fused_embed = self.fusion(personalized_node_embed, graph_embed, batch=data.batch)  # [batch_size, fusion_output_dim]
+        if debug and (torch.isnan(fused_embed).any() or torch.isinf(fused_embed).any()):
+            print("[Client Debug] fused_embed has nan or inf!")
 
         # Step 5: 进行多分类预测，目标是预测“关注哪个用户”
         logits = self.predictor(fused_embed)  # [batch_size, n_users]
+        if debug and (torch.isnan(logits).any() or torch.isinf(logits).any()):
+            print("[Client Debug] logits has nan or inf!")
 
         # Step 6: 计算损失
         loss = self.loss_fn(logits, target_labels)
@@ -114,53 +129,4 @@ class Client(nn.Module):
         return loss, logits
 
 
-"""
-def test_client_forward():
-    # 模拟图参数
-    num_nodes = 6
-    node_feat_dim = 8
 
-    # 构造简单图数据
-    x = torch.randn(num_nodes, node_feat_dim)
-    edge_index = torch.randint(0, num_nodes, (2, 12))  # 随机边
-    batch = torch.zeros(num_nodes, dtype=torch.long)
-    data = Data(x=x, edge_index=edge_index, batch=batch)
-
-    # 构造 user_ids 和 target_labels
-    user_ids = list(range(num_nodes))
-    target_labels = torch.randint(0, 20, (num_nodes,))  # 假设总用户数为 20
-
-    # 构造外部嵌入字典（模拟 n_clients 个客户端）
-    n_clients = 3
-    node_embed_dim = 12
-    external_node_embeds_dict = {
-        uid: [torch.randn(node_embed_dim) for _ in range(n_clients)]
-        for uid in user_ids
-    }
-
-    # 初始化 Client 模块
-    model = Client(
-        node_feat_dim=node_feat_dim,
-        node_hidden_dim=16,
-        node_embed_dim=node_embed_dim,
-        graph_hidden_dim=16,
-        graph_style_dim=6,
-        fusion_output_dim=18,
-        node_num_layers=2,
-        graph_num_layers=2,
-        dropout=0.2,
-        n_clients=n_clients,
-        n_users=20,
-    )
-
-    # 模型前向传播
-    loss, logits = model(data, user_ids, target_labels, 0.8, external_node_embeds_dict)
-
-    # 输出测试结果
-    print("Test passed.")
-    print("Loss:", loss.item())
-    print("Logits shape:", logits.shape)  # 应为 [batch_size (= num_nodes), n_users]
-
-
-test_client_forward()
-"""

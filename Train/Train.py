@@ -4,10 +4,7 @@ from torch_geometric.loader import DataLoader
 from Clients.Client import Client
 from Communication.P2P import P2PCommunicator
 from typing import Dict
-
-from torch_geometric.data import Data
-from torch.utils.data import Dataset
-import random
+import matplotlib.pyplot as plt
 
 
 def to_device(data_dict, device):
@@ -15,18 +12,8 @@ def to_device(data_dict, device):
 
 
 class Trainer:
-    def __init__(self, clients: Dict[int, Client], train_loaders: Dict[int, DataLoader], device, local_steps=1, total_rounds=10, alpha=0.5, save_every=1, checkpoint_dir='checkpoints', clean_old=True):
-        """
-        :param clients: 所有 client 的实例，格式 {client_id: client_instance}
-        :param train_loaders: 每个 client 对应的 DataLoader
-        :param device: 训练设备
-        :param local_steps: 本地训练的轮数
-        :param total_rounds: 联邦训练总轮数
-        :param alpha: 融合外部嵌入时的个性化加权系数
-        :param save_every: 每训练多少轮保存一次模型
-        :param checkpoint_dir: 保存模型的文件夹
-        :param clean_old: 是否在保存新 checkpoint 前清理旧的
-        """
+    def __init__(self, clients: Dict[int, Client], train_loaders: Dict[int, DataLoader], device, local_steps=1,
+                 total_rounds=10, alpha=0.5, save_every=1, checkpoint_dir='Checkpoints', clean_old=True):
         self.clients = clients
         self.train_loaders = train_loaders
         self.device = device
@@ -45,12 +32,9 @@ class Trainer:
         }
 
         self.network = {cid: [] for cid in clients}
+        self.client_losses = {cid: [] for cid in clients}
 
     def train(self, resume_round=0, load_checkpoint=False):
-        """
-        :param resume_round: 从哪一轮开始训练
-        :param load_checkpoint: 是否加载已有 checkpoint 继续训练
-        """
         if load_checkpoint and resume_round > 0:
             self.load_checkpoint(resume_round)
             print(f"[Trainer] Loaded checkpoint from round {resume_round}.")
@@ -62,11 +46,30 @@ class Trainer:
                 communicator = self.communicators[cid]
                 dataloader = self.train_loaders[cid]
 
+                local_losses = []
+
                 for local_step in range(self.local_steps):
                     for batch in dataloader:
                         batch = batch.to(self.device)
+
+                        # --- 加入保护 ---
+                        if not hasattr(batch, 'user_ids') or not hasattr(batch, 'target_labels'):
+                            print(
+                                f"[Warning] Batch missing user_ids or target_labels at Client {cid}. Skipping this batch.")
+                            continue
+                        if batch.user_ids.numel() == 0 or batch.target_labels.numel() == 0:
+                            print(f"[Warning] Empty user_ids or target_labels at Client {cid}. Skipping this batch.")
+                            continue
+
                         user_ids = batch.user_ids.to(self.device)
                         target_labels = batch.target_labels.to(self.device)
+
+                        # 检查 target_labels 范围
+                        try:
+                            print(
+                                f"[Debug] Client {cid} target_labels min: {target_labels.min().item()}, max: {target_labels.max().item()}")
+                        except Exception as e:
+                            print(f"[Warning] Cannot print target_labels stats for Client {cid}: {e}")
 
                         external_dict = communicator.organize_external_node_embeds(
                             received_packets=self.network[cid],
@@ -83,16 +86,43 @@ class Trainer:
                             external_node_embeds_dict=external_dict
                         )
 
+                        if torch.isnan(loss) or torch.isinf(loss):
+                            print(f"[Error] Loss is NaN or Inf at Client {cid}, skipping this batch update.")
+                            continue
+
                         loss.backward()
                         client.optimizer.step()
                         client.optimizer.zero_grad()
 
-                # 广播本地用户嵌入
+                        local_losses.append(loss.item())
+
+                if local_losses:
+                    avg_loss = sum(local_losses) / len(local_losses)
+                else:
+                    avg_loss = 0.0
+                    print(f"[Warning] Client {cid} has no batch at Round {round + 1}. Setting avg_loss=0.")
+
+                self.client_losses[cid].append(avg_loss)
+                print(f"[Trainer] Round {round + 1} Client {cid} Loss: {avg_loss:.6f}")
+
+                # 广播本地嵌入
                 with torch.no_grad():
                     for batch in dataloader:
                         batch = batch.to(self.device)
+
+                        if not hasattr(batch, 'user_ids') or batch.user_ids.numel() == 0:
+                            print(f"[Warning] Missing or empty user_ids during broadcast at Client {cid}. Skipping.")
+                            continue
+
                         user_ids = batch.user_ids.to(self.device)
+
                         local_user_embeds = client.node_encoder(batch)
+
+                        if torch.isnan(local_user_embeds).any() or torch.isinf(local_user_embeds).any():
+                            print(
+                                f"[Error] Found NaN or Inf in local_user_embeds during broadcast at Client {cid}. Skipping this batch.")
+                            continue
+
                         package = communicator.pack_user_embeddings(user_ids, local_user_embeds)
                         communicator.send_to_all_peers(package, self.network)
 
@@ -103,8 +133,10 @@ class Trainer:
             if (round + 1) % self.save_every == 0:
                 self.save_checkpoint(round + 1)
 
+        # 训练结束后绘制 loss 曲线
+        self.plot_losses()
+
     def save_checkpoint(self, round):
-        """保存所有 clients 的模型参数"""
         if self.clean_old:
             self._clear_checkpoints()
 
@@ -114,7 +146,6 @@ class Trainer:
         print(f"[Checkpoint] Saved models at round {round}.")
 
     def load_checkpoint(self, round):
-        """加载所有 clients 的模型参数"""
         for cid, client in self.clients.items():
             load_path = os.path.join(self.checkpoint_dir, f'client_{cid}_round_{round}.pth')
             if os.path.exists(load_path):
@@ -125,88 +156,26 @@ class Trainer:
                 print(f"[Checkpoint] Warning: No checkpoint found for client {cid} at round {round}.")
 
     def _clear_checkpoints(self):
-        """清理 checkpoint 目录下所有旧的 .pth 文件"""
         for filename in os.listdir(self.checkpoint_dir):
             if filename.endswith('.pth'):
                 filepath = os.path.join(self.checkpoint_dir, filename)
                 os.remove(filepath)
         print(f"[Checkpoint] Cleared old checkpoints.")
 
+    def plot_losses(self, save_dir='loss_plots'):
+        os.makedirs(save_dir, exist_ok=True)
 
-"""
-class MyFakeDataset(Dataset):
-    def __init__(self, num_graphs=5, feature_dim=16, num_users=10):
-        self.num_graphs = num_graphs
-        self.feature_dim = feature_dim
-        self.num_users = num_users
+        for cid, losses in self.client_losses.items():
+            plt.figure()
+            plt.plot(range(1, len(losses) + 1), losses, marker='o', label=f'Client {cid}')
+            plt.xlabel('Round')
+            plt.ylabel('Loss')
+            plt.title(f'Client {cid} Loss Over Rounds')
+            plt.legend()
+            plt.grid(True)
+            plt.savefig(os.path.join(save_dir, f'client_{cid}_loss_curve.png'))
+            plt.close()
 
-    def __len__(self):
-        return self.num_graphs
+        print(f"[Plot] Saved all client loss curves to '{save_dir}'.")
 
-    def __getitem__(self, idx):
-        num_nodes = random.randint(2, 5)
-        x = torch.randn((num_nodes, self.feature_dim))
-        edge_index = torch.randint(0, num_nodes, (2, num_nodes * 2))
-        batch = torch.zeros(num_nodes, dtype=torch.long)
-
-        user_ids = torch.randint(0, self.num_users, (num_nodes,))
-        target_labels = torch.randint(0, self.num_users, (num_nodes,))
-
-        data = Data(x=x, edge_index=edge_index, batch=batch)
-        data.user_ids = user_ids
-        data.target_labels = target_labels
-        return data
-
-
-def build_clients(n_clients=2, feature_dim=16, num_users=10):
-    clients = {}
-    for cid in range(n_clients):
-        client = Client(
-            node_feat_dim=feature_dim,
-            node_hidden_dim=32,
-            node_embed_dim=64,
-            graph_hidden_dim=32,
-            graph_style_dim=32,
-            fusion_output_dim=64,
-            node_num_layers=2,
-            graph_num_layers=2,
-            dropout=0.1,
-            n_clients=n_clients - 1,
-            n_users=num_users
-        )
-        client.optimizer = torch.optim.Adam(client.parameters(), lr=0.01)
-        clients[cid] = client
-    return clients
-
-
-def test_my_trainer():
-    torch.manual_seed(0)
-    n_clients = 3
-    feature_dim = 16
-    num_users = 10
-    batch_size = 1
-
-    clients = build_clients(n_clients=n_clients, feature_dim=feature_dim, num_users=num_users)
-
-    train_loaders = {}
-    for cid in range(n_clients):
-        dataset = MyFakeDataset(num_graphs=5, feature_dim=feature_dim, num_users=num_users)
-        loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)  # 使用 PyG 的 DataLoader
-        train_loaders[cid] = loader
-
-    trainer = Trainer(
-        clients=clients,
-        train_loaders=train_loaders,
-        device='cpu',
-        local_steps=3,
-        total_rounds=5,
-        alpha=0.5
-    )
-
-    trainer.train()
-
-
-if __name__ == "__main__":
-    test_my_trainer()
-"""
 
