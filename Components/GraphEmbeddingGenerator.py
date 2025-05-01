@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv, global_add_pool
+from torch_geometric.nn import GCNConv, global_add_pool,global_mean_pool
 from torch_geometric.data import Data
 
 
@@ -50,7 +50,7 @@ class GraphEmbeddingGenerator(nn.Module):
             x = F.dropout(x, self.dropout, training=self.training)
 
         # 图级聚合
-        graph_embed = global_add_pool(x, batch)
+        graph_embed = global_mean_pool(x, batch)
 
         return graph_embed
 

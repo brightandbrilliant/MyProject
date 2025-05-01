@@ -5,7 +5,7 @@ from Clients.Client import Client
 from Communication.P2P import P2PCommunicator
 from typing import Dict
 import matplotlib.pyplot as plt
-
+import time
 
 def to_device(data_dict, device):
     return {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in data_dict.items()}
@@ -125,7 +125,7 @@ class Trainer:
 
                         package = communicator.pack_user_embeddings(user_ids, local_user_embeds)
                         communicator.send_to_all_peers(package, self.network)
-
+                        # time.sleep(1)
             # 清空模拟网络缓冲区
             self.network = {cid: [] for cid in self.clients}
 
@@ -137,8 +137,8 @@ class Trainer:
         self.plot_losses()
 
     def save_checkpoint(self, round):
-        if self.clean_old:
-            self._clear_checkpoints()
+        # if self.clean_old:
+         #    self._clear_checkpoints()
 
         for cid, client in self.clients.items():
             save_path = os.path.join(self.checkpoint_dir, f'client_{cid}_round_{round}.pth')

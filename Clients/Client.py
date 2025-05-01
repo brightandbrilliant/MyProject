@@ -8,6 +8,34 @@ from Components.EmbeddingAggregator import PersonalizedUserAggregator
 from Components.Fusion import FusionModule
 
 
+
+class MLPPredictor(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim, num_layers=3, dropout=0.3):
+        super(MLPPredictor, self).__init__()
+        layers = []
+
+        # 输入层
+        layers.append(nn.Linear(input_dim, hidden_dim))
+        layers.append(nn.BatchNorm1d(hidden_dim))
+        layers.append(nn.ReLU())
+        layers.append(nn.Dropout(dropout))
+
+        # 中间层
+        for _ in range(num_layers - 2):
+            layers.append(nn.Linear(hidden_dim, hidden_dim))
+            layers.append(nn.BatchNorm1d(hidden_dim))
+            layers.append(nn.ReLU())
+            layers.append(nn.Dropout(dropout))
+
+        # 输出层
+        layers.append(nn.Linear(hidden_dim, output_dim))
+
+        self.network = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.network(x)
+
+
 class Client(nn.Module):
     def __init__(self,
                  node_feat_dim,          # 节点的初始特征维度
@@ -56,10 +84,16 @@ class Client(nn.Module):
         )
 
         # 用于最终关注用户预测的分类器
-        self.predictor = nn.Linear(fusion_output_dim, n_users)
+        self.predictor = MLPPredictor(
+            input_dim=fusion_output_dim,
+            hidden_dim=96,  # 可调
+            output_dim=n_users,
+            num_layers=4,  # 可调
+            dropout=0.2  # 可调
+        )
 
         # 交叉熵损失函数（用于多分类）
-        self.loss_fn = nn.BCEWithLogitsLoss()
+        self.loss_fn = nn.CrossEntropyLoss()
         self.optimizer = None
 
     def create_optimizer(self, lr=1e-3, weight_decay=1e-5):
@@ -117,6 +151,8 @@ class Client(nn.Module):
         fused_embed = self.fusion(personalized_node_embed, graph_embed, batch=data.batch)  # [batch_size, fusion_output_dim]
         if debug and (torch.isnan(fused_embed).any() or torch.isinf(fused_embed).any()):
             print("[Client Debug] fused_embed has nan or inf!")
+
+        print(f"Fused Embedding:{fused_embed}")
 
         # Step 5: 进行多分类预测，目标是预测“关注哪个用户”
         logits = self.predictor(fused_embed)  # [batch_size, n_users]

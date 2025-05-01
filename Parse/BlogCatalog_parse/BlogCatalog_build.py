@@ -1,10 +1,11 @@
 import torch
 from torch_geometric.data import Data
 
-def preprocess_social_graph(raw_users):
+
+
+def preprocess_social_graph(raw_users, group_id_to_idx):
     print(f"预处理开始，总共有 {len(raw_users)} 个用户")
 
-    all_group_ids = set()
     valid_users = []
 
     # 遍历 key-value
@@ -14,16 +15,12 @@ def preprocess_social_graph(raw_users):
         if 'groups' not in user_info:
             continue
         valid_users.append((user_id, user_info))
-        all_group_ids.update(user_info['groups'])
 
     print(f"有效用户数量：{len(valid_users)}")
-    print(f"出现的群组数量：{len(all_group_ids)}")
+    print(f"使用的群组总数（来自全局映射）：{len(group_id_to_idx)}")
 
     if len(valid_users) == 0:
         raise ValueError("没有找到有效用户，请检查 raw_users 数据结构")
-
-    all_group_ids = sorted(list(all_group_ids))
-    group_id_to_idx = {gid: idx for idx, gid in enumerate(all_group_ids)}
 
     user_id2idx = {user_id: idx for idx, (user_id, _) in enumerate(valid_users)}
 
@@ -33,9 +30,10 @@ def preprocess_social_graph(raw_users):
     target_labels = []
 
     n_users = len(valid_users)
+    feat_dim = len(group_id_to_idx)
 
     for user_id, user_info in valid_users:
-        group_feats = torch.zeros(len(all_group_ids))
+        group_feats = torch.zeros(feat_dim)
         for gid in user_info.get('groups', []):
             if gid in group_id_to_idx:
                 group_feats[group_id_to_idx[gid]] = 1.0

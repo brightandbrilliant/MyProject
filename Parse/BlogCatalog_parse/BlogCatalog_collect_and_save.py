@@ -5,6 +5,12 @@ import os
 import torch
 from collections import defaultdict, Counter
 
+def extract_global_group_map(user_dict):
+    all_groups = set()
+    for info in user_dict.values():
+        all_groups.update(info.get('groups', []))
+    all_groups = sorted(list(all_groups))
+    return {gid: idx for idx, gid in enumerate(all_groups)}
 
 def split_user_dict_with_domain_shift(user_dict, n_clients=3, dominant_ratio=0.75, test_ratio=0.1, seed=42, groups_per_client=20):
     random.seed(seed)
@@ -59,7 +65,7 @@ def split_user_dict_with_domain_shift(user_dict, n_clients=3, dominant_ratio=0.7
     return clients_data, client_dominant_groups
 
 
-def save_clients_datasets(clients_data, save_dir='../../Parsed_dataset/BlogCatalog'):
+def save_clients_datasets(clients_data, group_id_to_idx, save_dir='../../Parsed_dataset/BlogCatalog'):
     os.makedirs(save_dir, exist_ok=True)
 
     for cid, splits in clients_data.items():
@@ -75,7 +81,7 @@ def save_clients_datasets(clients_data, save_dir='../../Parsed_dataset/BlogCatal
                 new_info['following'] = filtered_following
                 filtered_users[uid] = new_info
 
-            data = preprocess_social_graph(filtered_users)
+            data = preprocess_social_graph(filtered_users, group_id_to_idx)
 
             save_path = os.path.join(save_dir, f'client{cid}_{split_name}.pt')
             torch.save(data, save_path)
@@ -86,7 +92,7 @@ def main():
     edge_file = '../../Dataset/BlogCatalog/BlogCatalog-dataset/data/edges.csv'
     node_file = '../../Dataset/BlogCatalog/BlogCatalog-dataset/data/group-edges.csv'
     user_dict = read_data(edge_file, node_file)
-
+    group_id_to_idx = extract_global_group_map(user_dict)
     clients_data, dominant_groups = split_user_dict_with_domain_shift(
         user_dict, n_clients=3)
 
@@ -109,7 +115,7 @@ def main():
 
 
     # 保存
-    save_clients_datasets(clients_data)
+    save_clients_datasets(clients_data, group_id_to_idx)
 
 
 if __name__ == "__main__":
