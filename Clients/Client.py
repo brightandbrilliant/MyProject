@@ -93,7 +93,7 @@ class Client(nn.Module):
         )
 
         # 交叉熵损失函数（用于多分类）
-        self.loss_fn = nn.CrossEntropyLoss()
+        self.loss_fn = nn.BCEWithLogitsLoss()
         self.optimizer = None
 
     def create_optimizer(self, lr=1e-3, weight_decay=1e-5):
@@ -152,7 +152,7 @@ class Client(nn.Module):
         if debug and (torch.isnan(fused_embed).any() or torch.isinf(fused_embed).any()):
             print("[Client Debug] fused_embed has nan or inf!")
 
-        print(f"Fused Embedding:{fused_embed}")
+        # print(f"Fused Embedding:{fused_embed}")
 
         # Step 5: 进行多分类预测，目标是预测“关注哪个用户”
         logits = self.predictor(fused_embed)  # [batch_size, n_users]

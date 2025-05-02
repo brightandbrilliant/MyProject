@@ -66,7 +66,7 @@ class PersonalizedUserAggregator(nn.Module):
         # print("聚合后嵌入:")
         # print(aggregated_embeddings)
         combined_embeds = alpha * local_user_embeds + (1 - alpha) * aggregated_embeddings
-        print(f'combined_embeds:{combined_embeds}')
+        # print(f'combined_embeds:{combined_embeds}')
         return combined_embeds
 
 

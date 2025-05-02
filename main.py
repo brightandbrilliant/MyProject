@@ -94,7 +94,7 @@ def main():
         local_steps=args.local_steps,
         total_rounds=args.total_rounds,
         alpha=args.alpha,
-        save_every=400,
+        save_every=50,
         checkpoint_dir='Check_server'
     )
 

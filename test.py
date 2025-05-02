@@ -14,7 +14,7 @@ def load_model(checkpoint_path, model_args, device):
     return model
 
 
-def evaluate(model, dataloader, device, threshold=0.5):
+def evaluate(model, dataloader, device, threshold=0.1):
     all_preds = []
     all_labels = []
 
@@ -72,9 +72,9 @@ def main():
         n_users=n_users
     )
 
-    for i in range(1, 20):
+    for i in range(1, 5):
         # 加载模型
-        checkpoint_path = f'Check1/client_0_round_{50*i}.pth'
+        checkpoint_path = f'Check_server/client_0_round_{50*i}.pth'
         model = load_model(checkpoint_path, model_args, device)
         # 模型评估
         precision, recall = evaluate(model, test_loader, device)
