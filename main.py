@@ -45,7 +45,7 @@ def main():
     # Step 1：获取每个 client 的最大 user_id + 1
     client_user_counts = []
     for cid in range(args.n_clients):
-        data_path = f'./Parsed_dataset/BlogCatalog/client{cid}_train.pt'
+        data_path = f'./Parsed_dataset/BlogCatalog/client{cid}.pt'
         data = torch.load(data_path)
 
         if not hasattr(data, 'user_ids'):
@@ -65,11 +65,14 @@ def main():
     # Step 3：构建每个 client 的 DataLoader
     train_loaders = {}
     for cid in range(args.n_clients):
-        data_path = f'./Parsed_dataset/BlogCatalog/client{cid}_train.pt'
+        data_path = f'./Parsed_dataset/BlogCatalog/client{cid}.pt'
         data = torch.load(data_path)
 
         if not hasattr(data, 'batch') or data.batch is None:
             data.batch = torch.zeros(data.num_nodes, dtype=torch.long)
+
+        if not hasattr(data, 'train_mask'):
+            raise ValueError(f"Client {cid} 的数据缺少 `train_mask` 属性")
 
         # user_ids 应为本地节点的真实 ID
         if not hasattr(data, 'user_ids'):
@@ -94,8 +97,8 @@ def main():
         local_steps=args.local_steps,
         total_rounds=args.total_rounds,
         alpha=args.alpha,
-        save_every=50,
-        checkpoint_dir='Check_server'
+        save_every=20,
+        checkpoint_dir='Check_new'
     )
 
     trainer.train(resume_round=0, load_checkpoint=False)

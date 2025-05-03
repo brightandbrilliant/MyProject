@@ -99,20 +99,10 @@ class Client(nn.Module):
     def create_optimizer(self, lr=1e-3, weight_decay=1e-5):
         self.optimizer = torch.optim.Adam(self.parameters(), lr=lr, weight_decay=weight_decay)
 
-    def forward(self, data, user_ids, target_labels, alpha, external_node_embeds_dict=None, debug=True):
+    def forward(self, data, user_ids, target_labels, alpha, external_node_embeds_dict=None, mask=None, debug=False):
         """
-        前向传播函数
-
         Args:
-            data: 包含图结构数据，具有属性 x（特征）, edge_index, batch 等
-            user_ids: List[int]，data 中每个节点对应的用户 ID，用于匹配其他客户端的嵌入
-            target_labels: Tensor[int]，目标标签（节点真实关注的用户 ID），shape: [batch_size]
-            external_node_embeds_dict: Dict[int, List[Tensor]]，每个用户 ID 在其他客户端中的嵌入
-            alpha: 个性化聚合加权系数
-            debug: 是否正在debug
-        Returns:
-            loss: CrossEntropy 损失
-            logits: [batch_size, n_users]，用于后续评估等
+            mask: Optional[Tensor]，形状为 [batch_size] 的布尔张量，表示哪些样本用于训练。
         """
 
         # Step 1: 本地节点嵌入生成
@@ -120,21 +110,16 @@ class Client(nn.Module):
         if debug and (torch.isnan(local_node_embeds).any() or torch.isinf(local_node_embeds).any()):
             print("[Client Debug] local_node_embeds has nan or inf!")
 
-        # Step 2: 聚合外部嵌入（若有）
+        # Step 2: 聚合外部嵌入
         if external_node_embeds_dict is not None:
             aligned_external_embeds = []
             for i, uid in enumerate(user_ids):
                 if uid in external_node_embeds_dict:
                     aligned_external_embeds.append(external_node_embeds_dict[uid])
                 else:
-                    # 若没有外部信息则使用全零代替
                     zeros = [torch.zeros_like(local_node_embeds[i]) for _ in range(self.attn_aggregator.n_clients)]
                     aligned_external_embeds.append(zeros)
-
-            # 对齐外部嵌入格式
             aligned_external_embeds = [torch.stack(embed_list, dim=0) for embed_list in aligned_external_embeds]
-
-            # 聚合外部和本地嵌入
             personalized_node_embed = self.attn_aggregator(aligned_external_embeds, local_node_embeds, alpha)
         else:
             personalized_node_embed = local_node_embeds
@@ -143,23 +128,27 @@ class Client(nn.Module):
             print("[Client Debug] personalized_node_embed has nan or inf!")
 
         # Step 3: 图嵌入生成
-        graph_embed = self.graph_encoder(data)  # [num_graphs, graph_style_dim]
+        graph_embed = self.graph_encoder(data)
         if debug and (torch.isnan(graph_embed).any() or torch.isinf(graph_embed).any()):
             print("[Client Debug] graph_embed has nan or inf!")
 
         # Step 4: 融合节点与图嵌入
-        fused_embed = self.fusion(personalized_node_embed, graph_embed, batch=data.batch)  # [batch_size, fusion_output_dim]
+        fused_embed = self.fusion(personalized_node_embed, graph_embed, batch=data.batch)
         if debug and (torch.isnan(fused_embed).any() or torch.isinf(fused_embed).any()):
             print("[Client Debug] fused_embed has nan or inf!")
 
-        # print(f"Fused Embedding:{fused_embed}")
+        # Step 5: 使用 mask 过滤训练数据（仅用于训练阶段）
+        if mask is not None:
+            fused_embed = fused_embed[mask]
+            target_labels = target_labels[mask]
 
-        # Step 5: 进行多分类预测，目标是预测“关注哪个用户”
-        logits = self.predictor(fused_embed)  # [batch_size, n_users]
+        # Step 6: 多分类预测
+        logits = self.predictor(fused_embed)
+
         if debug and (torch.isnan(logits).any() or torch.isinf(logits).any()):
             print("[Client Debug] logits has nan or inf!")
 
-        # Step 6: 计算损失
+        # Step 7: 计算 BCE 多标签损失
         loss = self.loss_fn(logits, target_labels)
 
         return loss, logits

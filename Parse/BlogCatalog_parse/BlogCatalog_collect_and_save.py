@@ -69,23 +69,51 @@ def save_clients_datasets(clients_data, group_id_to_idx, save_dir='../../Parsed_
     os.makedirs(save_dir, exist_ok=True)
 
     for cid, splits in clients_data.items():
-        for split_name in ['train', 'test']:
-            raw_users = splits[split_name]
+        # 合并 train 和 test
+        all_users = dict()
+        train_ids = set()
+        test_ids = set()
 
-            # 限制内部边
-            valid_uids = set(raw_users.keys())
-            filtered_users = {}
-            for uid, info in raw_users.items():
-                filtered_following = [f for f in info.get('following', []) if f in valid_uids]
-                new_info = dict(info)
-                new_info['following'] = filtered_following
-                filtered_users[uid] = new_info
+        for uid, info in splits['train'].items():
+            all_users[uid] = info
+            train_ids.add(uid)
 
-            data = preprocess_social_graph(filtered_users, group_id_to_idx)
+        for uid, info in splits['test'].items():
+            all_users[uid] = info
+            test_ids.add(uid)
 
-            save_path = os.path.join(save_dir, f'client{cid}_{split_name}.pt')
-            torch.save(data, save_path)
-            print(f"[Saved] Client {cid} {split_name} set to {save_path}")
+        # 保留图内部边
+        valid_uids = set(all_users.keys())
+        filtered_users = {}
+        for uid, info in all_users.items():
+            filtered_following = [f for f in info.get('following', []) if f in valid_uids]
+            new_info = dict(info)
+            new_info['following'] = filtered_following
+            filtered_users[uid] = new_info
+
+        # 构建图
+        data = preprocess_social_graph(filtered_users, group_id_to_idx)
+
+        # 创建 mask
+        uid_to_idx = {uid: i for i, uid in enumerate(data.user_ids.tolist())}
+        train_mask = torch.zeros(data.num_nodes, dtype=torch.bool)
+        test_mask = torch.zeros(data.num_nodes, dtype=torch.bool)
+
+        for uid in train_ids:
+            if uid in uid_to_idx:
+                train_mask[uid_to_idx[uid]] = True
+        for uid in test_ids:
+            if uid in uid_to_idx:
+                test_mask[uid_to_idx[uid]] = True
+
+        data.train_mask = train_mask
+        data.test_mask = test_mask
+
+        # 保存一份完整图 + mask 文件
+        save_path = os.path.join(save_dir, f'client{cid}.pt')
+        torch.save(data, save_path)
+        print(f"[Saved] Client {cid} full graph with train/test masks to {save_path}")
+
 
 
 def main():

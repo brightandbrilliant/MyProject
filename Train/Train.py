@@ -54,23 +54,22 @@ class Trainer:
 
                         # --- 加入保护 ---
                         if not hasattr(batch, 'user_ids') or not hasattr(batch, 'target_labels'):
-                            print(
-                                f"[Warning] Batch missing user_ids or target_labels at Client {cid}. Skipping this batch.")
+                            print(f"[Warning] Batch missing user_ids or target_labels at Client {cid}. Skipping.")
                             continue
                         if batch.user_ids.numel() == 0 or batch.target_labels.numel() == 0:
-                            print(f"[Warning] Empty user_ids or target_labels at Client {cid}. Skipping this batch.")
+                            print(f"[Warning] Empty user_ids or target_labels at Client {cid}. Skipping.")
                             continue
 
+                        train_mask = batch.train_mask if hasattr(batch, 'train_mask') else None
                         user_ids = batch.user_ids.to(self.device)
                         target_labels = batch.target_labels.to(self.device)
-
-                        # 检查 target_labels 范围
+                        """
                         try:
                             print(
                                 f"[Debug] Client {cid} target_labels min: {target_labels.min().item()}, max: {target_labels.max().item()}")
                         except Exception as e:
                             print(f"[Warning] Cannot print target_labels stats for Client {cid}: {e}")
-
+                        """
                         external_dict = communicator.organize_external_node_embeds(
                             received_packets=self.network[cid],
                             user_ids=user_ids,
@@ -83,7 +82,8 @@ class Trainer:
                             user_ids=user_ids,
                             target_labels=target_labels,
                             alpha=self.alpha,
-                            external_node_embeds_dict=external_dict
+                            external_node_embeds_dict=external_dict,
+                            mask=train_mask  # ✅ 新增
                         )
 
                         if torch.isnan(loss) or torch.isinf(loss):
@@ -125,15 +125,12 @@ class Trainer:
 
                         package = communicator.pack_user_embeddings(user_ids, local_user_embeds)
                         communicator.send_to_all_peers(package, self.network)
-                        # time.sleep(1)
-            # 清空模拟网络缓冲区
+
             self.network = {cid: [] for cid in self.clients}
 
-            # 保存 checkpoint
             if (round + 1) % self.save_every == 0:
                 self.save_checkpoint(round + 1)
 
-        # 训练结束后绘制 loss 曲线
         self.plot_losses()
 
     def save_checkpoint(self, round):
