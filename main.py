@@ -97,7 +97,7 @@ def main():
         local_steps=args.local_steps,
         total_rounds=args.total_rounds,
         alpha=args.alpha,
-        save_every=20,
+        save_every=200,
         checkpoint_dir='Check_new'
     )
 

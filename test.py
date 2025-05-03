@@ -80,8 +80,8 @@ def main():
         n_users=n_users
     )
 
-    for i in range(1, 4):
-        checkpoint_path = f'Check_new/client_0_round_{20 * i}.pth'
+    for i in range(1, 21):
+        checkpoint_path = f'Check_new/client_0_round_{200 * i}.pth'
         model = load_model(checkpoint_path, model_args, device)
         precision, recall = evaluate(model, test_loader, device)
         print(f"[Round {20 * i}] Test Precision: {precision:.4f}, Recall: {recall:.4f}")
