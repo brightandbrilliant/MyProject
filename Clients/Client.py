@@ -5,7 +5,7 @@ from torch_geometric.data import Data
 from Components.GraphEmbeddingGenerator import GraphEmbeddingGenerator
 from Components.NodeEmbeddingGenerator import UserEmbeddingGenerator
 from Components.EmbeddingAggregator import PersonalizedUserAggregator
-from Components.Fusion import FusionModule, AttentionalFusion
+from Components.Fusion import FusionModule, AttentionalFusion, CrossAttentionFusionModule
 
 
 
@@ -77,7 +77,7 @@ class Client(nn.Module):
         )
 
         # 节点嵌入与图嵌入的融合模块
-        self.fusion = AttentionalFusion(
+        self.fusion = CrossAttentionFusionModule(
             node_dim=node_embed_dim,
             graph_dim=graph_style_dim,
             out_dim=fusion_output_dim

@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-
+import torch.nn.functional as F
 
 class FusionModule(nn.Module):
     def __init__(self, node_dim, graph_dim, out_dim):
@@ -41,3 +41,41 @@ class AttentionalFusion(nn.Module):
         return out
 
 
+class CrossAttentionFusionModule(nn.Module):
+    def __init__(self, node_dim, graph_dim, out_dim, hidden_dim=64):
+        super(CrossAttentionFusionModule, self).__init__()
+
+        # 映射到共同维度
+        self.query_proj = nn.Linear(node_dim, hidden_dim)
+        self.key_proj = nn.Linear(graph_dim, hidden_dim)
+        self.value_proj = nn.Linear(graph_dim, hidden_dim)
+
+        # 输出层
+        self.output_proj = nn.Linear(hidden_dim, out_dim)
+
+    def forward(self, node_embed, graph_embed, batch=None):
+        """
+        node_embed: [N, node_dim]
+        graph_embed: [B, graph_dim] or [N, graph_dim] (if broadcasted per node)
+        batch: [N] 表示每个节点属于哪个图
+        """
+        # Step 1: 对 graph_embed 进行 broadcast 到每个节点
+        if len(graph_embed.shape) == 2 and node_embed.shape[0] != graph_embed.shape[0]:
+            assert batch is not None, "需要 batch 来 broadcast graph_embed"
+            graph_embed = graph_embed[batch]  # [N, graph_dim]
+
+        # Step 2: 线性映射 Q, K, V
+        Q = self.query_proj(node_embed)  # [N, hidden_dim]
+        K = self.key_proj(graph_embed)  # [N, hidden_dim]
+        V = self.value_proj(graph_embed)  # [N, hidden_dim]
+
+        # Step 3: Attention Score + Softmax
+        attn_score = (Q * K).sum(dim=-1, keepdim=True) / (Q.size(-1) ** 0.5)  # [N, 1]
+        attn_weight = F.softmax(attn_score, dim=0)  # softmax 可调整为 dim=1 视情形而定
+
+        # Step 4: 加权聚合
+        attn_output = attn_weight * V  # [N, hidden_dim]
+
+        # Step 5: 输出映射
+        fused = self.output_proj(attn_output)  # [N, out_dim]
+        return fused

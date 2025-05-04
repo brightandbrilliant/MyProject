@@ -25,16 +25,23 @@ my_precision = [0.1602, 0.2246, 0.1925, 0.1566, 0.1686, 0.1825, 0.1743, 0.2149, 
 my_recall = [0.2070, 0.2058, 0.2337, 0.2183, 0.1323, 0.2224, 0.2017, 0.1934, 0.1874, 0.1957,
              0.2325, 0.2123, 0.2200, 0.2100, 0.1862, 0.1922, 0.2064, 0.2112, 0.1898, 0.2307]
 
+my_precision_att = [0.1059, 0.1122, 0.1530, 0.1560, 0.1326, 0.1648, 0.1472, 0.1459, 0.1672, 0.1465,
+                    0.1519, 0.1289, 0.1632, 0.1857, 0.1628, 0.1060, 0.1952, 0.1557, 0.0882, 0.1282]
+
+my_recall_att = [0.1566, 0.2266, 0.1311, 0.1868, 0.2224, 0.1791, 0.2349, 0.2088, 0.1916, 0.2734,
+                 0.2195, 0.2017, 0.1898, 0.2046, 0.1951, 0.2479, 0.1767, 0.2254, 0.3458, 0.2058]
+
+
 # 数据准备
-models = ['GAT', 'GCN', 'SAGE', 'My Model']
-precision_data = [gat_precision, gcn_precision, sage_precision, my_precision]
-recall_data = [gat_recall, gcn_recall, sage_recall, my_recall]
+models = ['GAT', 'GCN', 'SAGE', 'My Model', 'My Model New']
+precision_data = [gat_precision, gcn_precision, sage_precision, my_precision, my_precision_att]
+recall_data = [gat_recall, gcn_recall, sage_recall, my_recall, my_recall_att]
 
 # 通用样式配置
 plt.style.use('ggplot')
-colors = ['#E69F00', '#56B4E9', '#009E73', '#CC79A7']
-line_styles = ['-', '--', '-.', ':']
-markers = ['o', 's', 'D', '^']
+colors = ['#E69F00', '#56B4E9', '#009E73', '#CC79A7', 'Red']
+line_styles = ['-', '--', '-.', ':', 'solid']
+markers = ['o', 's', 'D', '^', 'o']
 x_ticks = np.arange(0, 21, 5)  # 优化X轴刻度
 
 # 独立绘制准确率曲线
