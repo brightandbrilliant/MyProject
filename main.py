@@ -1,7 +1,7 @@
 import argparse
 import torch
 from torch_geometric.loader import DataLoader
-
+from Train.FedAVGTrainer import FedAvgTrainer
 from Train.Train import Trainer
 from Clients.Client import Client
 
@@ -90,6 +90,7 @@ def main():
         train_loaders[cid] = loader
 
     # Step 4：创建 Trainer 并开始训练
+    """
     trainer = Trainer(
         clients=clients,
         train_loaders=train_loaders,
@@ -100,8 +101,19 @@ def main():
         save_every=200,
         checkpoint_dir='Check_new'
     )
+    """
+    trainer = FedAvgTrainer(
+        clients=clients,
+        train_loaders=train_loaders,
+        device=args.device,
+        local_steps=args.local_steps,
+        total_rounds=args.total_rounds,
+        checkpoint_dir='Check_new_FedAvg',
+        save_every=100
+    )
 
-    trainer.train(resume_round=0, load_checkpoint=False)
+    # trainer.train(resume_round=0, load_checkpoint=False)
+    trainer.train()
 
 
 if __name__ == "__main__":

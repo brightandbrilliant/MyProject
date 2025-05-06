@@ -31,61 +31,61 @@ my_precision_att = [0.1059, 0.1122, 0.1530, 0.1560, 0.1326, 0.1648, 0.1472, 0.14
 my_recall_att = [0.1566, 0.2266, 0.1311, 0.1868, 0.2224, 0.1791, 0.2349, 0.2088, 0.1916, 0.2734,
                  0.2195, 0.2017, 0.1898, 0.2046, 0.1951, 0.2479, 0.1767, 0.2254, 0.3458, 0.2058]
 
+My_precision_cross = [0.1677, 0.2547, 0.1584, 0.1411, 0.1216]
+My_recall_cross = [0.0480, 0.0243, 0.0605, 0.0943, 0.1394]
 
 # 数据准备
-models = ['GAT', 'GCN', 'SAGE', 'My Model', 'My Model New']
-precision_data = [gat_precision, gcn_precision, sage_precision, my_precision, my_precision_att]
-recall_data = [gat_recall, gcn_recall, sage_recall, my_recall, my_recall_att]
+models = ['GAT', 'GCN', 'SAGE', 'My Model', 'My Model New', 'My Model Cross']
+precision_data = [gat_precision, gcn_precision, sage_precision, my_precision, my_precision_att, My_precision_cross]
+recall_data = [gat_recall, gcn_recall, sage_recall, my_recall, my_recall_att, My_recall_cross]
 
-# 通用样式配置
+# 修正后的样式配置
 plt.style.use('ggplot')
-colors = ['#E69F00', '#56B4E9', '#009E73', '#CC79A7', 'Red']
-line_styles = ['-', '--', '-.', ':', 'solid']
-markers = ['o', 's', 'D', '^', 'o']
-x_ticks = np.arange(0, 21, 5)  # 优化X轴刻度
+colors = ['#E69F00', '#56B4E9', '#009E73', '#CC79A7', 'red', 'gold']
+line_styles = ['-', '--', '-.', ':', '-', '--']
+markers = ['o', 's', 'D', '^', 'X', 'P']
+x_ticks = np.arange(0, 21, 5)  # 统一X轴刻度范围
 
-# 独立绘制准确率曲线
-plt.figure(figsize=(10, 6))
-for i, model in enumerate(models):
-    plt.plot(precision_data[i],
-             color=colors[i],
-             linestyle=line_styles[i],
-             linewidth=2,
-             marker=markers[i],
-             markersize=8,
-             markevery=3,
-             label=f'{model} (Max: {max(precision_data[i]):.3f})')
 
-plt.title('Precision Comparison Across Training Steps', fontsize=14, pad=15)
-plt.xlabel('Training Steps', fontsize=12)
-plt.ylabel('Precision', fontsize=12)
-plt.xticks(x_ticks)
-plt.grid(True, alpha=0.4)
-plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=4)
-plt.tight_layout()
-plt.savefig('precision_comparison.png', dpi=120, bbox_inches='tight')
-plt.close()
+def plot_comparison(data, title, ylabel, filename):
+    plt.figure(figsize=(10, 6))
 
-# 独立绘制召回率曲线
-plt.figure(figsize=(10, 6))
-for i, model in enumerate(models):
-    plt.plot(recall_data[i],
-             color=colors[i],
-             linestyle=line_styles[i],
-             linewidth=2,
-             marker=markers[i],
-             markersize=8,
-             markevery=3,
-             label=f'{model} (Max: {max(recall_data[i]):.3f})')
+    for idx, model in enumerate(models):
+        # 处理不同长度的数据（如Cross模型只有5个数据点）
+        x_values = np.arange(len(data[idx]))
+        plt.plot(x_values, data[idx],
+                 color=colors[idx],
+                 linestyle=line_styles[idx],
+                 linewidth=2,
+                 marker=markers[idx],
+                 markersize=8,
+                 markevery=2,
+                 label=model)
 
-plt.title('Recall Comparison Across Training Steps', fontsize=14, pad=15)
-plt.xlabel('Training Steps', fontsize=12)
-plt.ylabel('Recall', fontsize=12)
-plt.xticks(x_ticks)
-plt.grid(True, alpha=0.4)
-plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=4)
-plt.tight_layout()
-plt.savefig('recall_comparison.png', dpi=120, bbox_inches='tight')
-plt.close()
+    plt.title(title, fontsize=14, pad=15)
+    plt.xlabel('Training Steps', fontsize=12)
+    plt.ylabel(ylabel, fontsize=12)
+    plt.xticks(x_ticks)
+    plt.grid(True, alpha=0.4)
+    plt.legend(loc='upper center',
+               bbox_to_anchor=(0.5, -0.15),
+               ncol=3,  # 调整为3列适应更多模型
+               fontsize=10)
+    plt.tight_layout()
+    plt.savefig(filename, dpi=120, bbox_inches='tight')
+    plt.close()
+
+
+# 生成准确率对比图
+plot_comparison(precision_data,
+                'Precision Comparison Across Training Steps',
+                'Precision',
+                'precision_comparison.png')
+
+# 生成召回率对比图
+plot_comparison(recall_data,
+                'Recall Comparison Across Training Steps',
+                'Recall',
+                'recall_comparison.png')
 
 

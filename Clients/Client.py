@@ -77,7 +77,7 @@ class Client(nn.Module):
         )
 
         # 节点嵌入与图嵌入的融合模块
-        self.fusion = CrossAttentionFusionModule(
+        self.fusion = FusionModule(
             node_dim=node_embed_dim,
             graph_dim=graph_style_dim,
             out_dim=fusion_output_dim
